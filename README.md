@@ -2,6 +2,13 @@
 
 An enterprise-grade, autonomous AI agent platform for video discovery, speech-to-text audio transcription, and structured insights synthesis. Built with a modern, zero-emoji dark dashboard interface.
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit_Cloud-FF4B4B?style=for-the-badge&logo=streamlit)](https://video-research-agent-moaz.streamlit.app/)
+[![Video Demo](https://img.shields.io/badge/Video_Demo-Google_Drive-4285F4?style=for-the-badge&logo=googledrive)](https://drive.google.com/file/d/1iwyRlNu1ZoQQWmqYY4e4G1pXGhzZJjL2/view?usp=sharing)
+
+### Live Links & Demo
+- **Deployed Web App**: [video-research-agent-moaz.streamlit.app](https://video-research-agent-moaz.streamlit.app/)
+- **Video Walkthrough Demo**: [Watch Video Demo on Google Drive](https://drive.google.com/file/d/1iwyRlNu1ZoQQWmqYY4e4G1pXGhzZJjL2/view?usp=sharing)
+
 ---
 
 ## Key Features
