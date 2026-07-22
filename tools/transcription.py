@@ -151,6 +151,57 @@ def _download_audio(video_url: str, output_dir: str, section: str = None) -> str
     return os.path.join(output_dir, files[0])
 
 
+def _get_youtube_transcript(video_id: str) -> str:
+    """
+    Extracts transcript from YouTube using youtube-transcript-api across all versions.
+    Supports v0.6.x static get_transcript(), v1.x fetch(), and list_transcripts() fallbacks.
+    """
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        return None
+
+    # Method 1: v0.6.x static method get_transcript
+    if hasattr(YouTubeTranscriptApi, "get_transcript"):
+        try:
+            snippets = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US", "en-GB"])
+            if snippets:
+                return " ".join([item.get("text", "") for item in snippets if isinstance(item, dict) and item.get("text")]).strip()
+        except Exception:
+            try:
+                snippets = YouTubeTranscriptApi.get_transcript(video_id)
+                if snippets:
+                    return " ".join([item.get("text", "") for item in snippets if isinstance(item, dict) and item.get("text")]).strip()
+            except Exception:
+                pass
+
+    # Method 2: v1.x class instance fetch method
+    try:
+        api = YouTubeTranscriptApi()
+        if hasattr(api, "fetch"):
+            fetched = api.fetch(video_id)
+            if fetched:
+                return " ".join([getattr(s, "text", str(s)) for s in fetched]).strip()
+    except Exception:
+        pass
+
+    # Method 3: list_transcripts fallback
+    try:
+        if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+            t_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            try:
+                t_obj = t_list.find_transcript(["en", "en-US", "en-GB"])
+            except Exception:
+                t_obj = next(iter(t_list))
+            fetched = t_obj.fetch()
+            if fetched:
+                return " ".join([getattr(item, "text", str(item)) for item in fetched]).strip()
+    except Exception:
+        pass
+
+    return None
+
+
 # =============================================================================
 # TOOL IMPLEMENTATION
 # =============================================================================
@@ -185,37 +236,14 @@ def transcribe_video(video_url: str, video_title: str = "") -> str:
 
     # -------------------------------------------------------------------
     # STEP B: Primary Method — Fast YouTube Captions Transcript Fetch
-    #
-    # Bypasses 403 Forbidden cloud IP audio stream blocks by fetching
-    # YouTube's native transcript via youtube-transcript-api in ~0.5s.
     # -------------------------------------------------------------------
     video_id_match = re.search(r"(?:v=|\/)([a-zA-Z0-9_-]{11})", video_url)
     video_id = video_id_match.group(1) if video_id_match else None
 
-    transcript = None
-
-    if video_id:
-        try:
-            from youtube_transcript_api import YouTubeTranscriptApi
-            api = YouTubeTranscriptApi()
-            fetched_snippets = api.fetch(video_id)
-            if fetched_snippets:
-                transcript = " ".join([getattr(s, 'text', str(s)) for s in fetched_snippets]).strip()
-        except Exception:
-            try:
-                # Try legacy list_transcripts fallback
-                from youtube_transcript_api import YouTubeTranscriptApi
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                t_obj = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
-                fetched = t_obj.fetch()
-                transcript = " ".join([item.get('text', '') for item in fetched]).strip()
-            except Exception:
-                transcript = None
+    transcript = _get_youtube_transcript(video_id) if video_id else None
 
     # -------------------------------------------------------------------
     # STEP C: Fallback Method — yt-dlp Audio Download + Groq Whisper
-    #
-    # Used when a video has no native YouTube captions.
     # -------------------------------------------------------------------
     if not transcript:
         temp_dir = tempfile.mkdtemp(prefix="agent_audio_")
