@@ -1,0 +1,14 @@
+# Environments
+.env
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Streamlit logs/cache
+.streamlit/
+
+# Local database/transcripts
+knowledge_base/*.txt
