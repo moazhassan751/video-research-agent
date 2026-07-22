@@ -3,3 +3,4 @@ requests              # HTTP client — for calling SerpApi
 python-dotenv         # Load .env files — keeps API keys out of code
 yt-dlp                # YouTube audio downloader — extracts audio for Whisper
 streamlit             # Streamlit web UI framework
+youtube-transcript-api # Fast YouTube caption transcript fetch (bypasses cloud IP 403 Forbidden)

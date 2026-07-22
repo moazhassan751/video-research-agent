@@ -184,78 +184,60 @@ def transcribe_video(video_url: str, video_title: str = "") -> str:
         return json.dumps({"error": "GROQ_API_KEY environment variable is not set."})
 
     # -------------------------------------------------------------------
-    # STEP B: Download audio from YouTube using yt-dlp
+    # STEP B: Primary Method — Fast YouTube Captions Transcript Fetch
     #
-    # We download to a temporary directory that we clean up afterward.
-    # This prevents leftover audio files from piling up on disk.
+    # Bypasses 403 Forbidden cloud IP audio stream blocks by fetching
+    # YouTube's native transcript via youtube-transcript-api in ~0.5s.
     # -------------------------------------------------------------------
-    temp_dir = tempfile.mkdtemp(prefix="agent_audio_")
+    video_id_match = re.search(r"(?:v=|\/)([a-zA-Z0-9_-]{11})", video_url)
+    video_id = video_id_match.group(1) if video_id_match else None
 
-    try:
-        audio_path = _download_audio(video_url, temp_dir)
-    except Exception as e:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        error_msg = str(e)
-        if "Video unavailable" in error_msg or "Private video" in error_msg:
-            return json.dumps({"error": f"Video is unavailable or private: {error_msg}"})
-        elif "HTTP Error 429" in error_msg:
-            return json.dumps({"error": f"YouTube rate-limited the download. Try again in a minute."})
-        else:
-            return json.dumps({"error": f"Failed to download audio from YouTube: {error_msg}"})
+    transcript = None
 
-    # Check file size — Groq Whisper accepts up to 25MB
-    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-    if file_size_mb > 24:
-        # Retry with 20-minute section clipping if full audio exceeds 24MB
+    if video_id:
         try:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            temp_dir = tempfile.mkdtemp(prefix="agent_audio_clip_")
-            audio_path = _download_audio(video_url, temp_dir, section="00:00-20:00")
-            file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+            from youtube_transcript_api import YouTubeTranscriptApi
+            api = YouTubeTranscriptApi()
+            fetched_snippets = api.fetch(video_id)
+            if fetched_snippets:
+                transcript = " ".join([getattr(s, 'text', str(s)) for s in fetched_snippets]).strip()
         except Exception:
-            pass
-
-    if file_size_mb > 25:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        return json.dumps({
-            "error": f"Audio file is {file_size_mb:.1f}MB, which exceeds Groq Whisper's "
-                     f"25MB limit. Try a shorter video or segment."
-        })
+            try:
+                # Try legacy list_transcripts fallback
+                from youtube_transcript_api import YouTubeTranscriptApi
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                t_obj = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
+                fetched = t_obj.fetch()
+                transcript = " ".join([item.get('text', '') for item in fetched]).strip()
+            except Exception:
+                transcript = None
 
     # -------------------------------------------------------------------
-    # STEP C: Send audio to Groq Whisper for transcription
+    # STEP C: Fallback Method — yt-dlp Audio Download + Groq Whisper
     #
-    # Groq hosts OpenAI's Whisper model. We use the same GROQ_API_KEY
-    # that powers the LLM. The API is:
-    #   client.audio.transcriptions.create(file=..., model=...)
-    #
-    # The model "whisper-large-v3-turbo" is fast and accurate.
+    # Used when a video has no native YouTube captions.
     # -------------------------------------------------------------------
-    try:
-        client = Groq()
-        filename = os.path.basename(audio_path)
-
-        with open(audio_path, "rb") as audio_file:
-            transcription_result = client.audio.transcriptions.create(
-                file=(filename, audio_file.read()),
-                model="whisper-large-v3-turbo",
-                response_format="text",
-            )
-
-        # The result is the transcript text directly (when response_format="text")
-        transcript = str(transcription_result).strip()
-
-    except Exception as e:
-        error_msg = str(e)
-        if "413" in error_msg or "too large" in error_msg.lower():
-            return json.dumps({"error": "Audio file too large for Whisper API. Try a shorter video."})
-        elif "401" in error_msg or "403" in error_msg:
-            return json.dumps({"error": f"Groq authentication failed for Whisper. Check GROQ_API_KEY. Details: {error_msg}"})
-        else:
-            return json.dumps({"error": f"Groq Whisper transcription failed: {error_msg}"})
-    finally:
-        # Always clean up the temp audio file
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    if not transcript:
+        temp_dir = tempfile.mkdtemp(prefix="agent_audio_")
+        try:
+            audio_path = _download_audio(video_url, temp_dir)
+            client = Groq()
+            filename = os.path.basename(audio_path)
+            with open(audio_path, "rb") as audio_file:
+                transcription_result = client.audio.transcriptions.create(
+                    file=(filename, audio_file.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="text",
+                )
+            transcript = str(transcription_result).strip()
+        except Exception as e:
+            error_msg = str(e)
+            if "Video unavailable" in error_msg or "Private video" in error_msg:
+                return json.dumps({"error": f"Video is unavailable or private: {error_msg}"})
+            else:
+                return json.dumps({"error": f"Failed to transcribe video: {error_msg}"})
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     if not transcript:
         return json.dumps({"error": "Whisper returned an empty transcript. The video may have no speech."})
