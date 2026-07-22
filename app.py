@@ -66,10 +66,18 @@ CUSTOM_CSS = """
         border-right: 1px solid #1E293B !important;
     }
 
-    /* Hide standard radio circles in sidebar for clean custom menu look */
+    /* Hide standard radio circles in sidebar across Streamlit Cloud & local */
     div[data-testid="stRadio"] label div[role="radio"],
-    div[data-testid="stRadio"] label input {
+    div[data-testid="stRadio"] label input,
+    div[data-testid="stRadio"] label [data-baseweb="radio"],
+    div[role="radiogroup"] label input,
+    div[role="radiogroup"] label div:first-child,
+    div[data-baseweb="radio"] > div:first-child {
         display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
     }
 
     div[data-testid="stRadio"] label {

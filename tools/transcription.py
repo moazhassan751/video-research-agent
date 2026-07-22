@@ -121,15 +121,28 @@ def _download_audio(video_url: str, output_dir: str, section: str = None) -> str
         "no_warnings": True,
         "noplaylist": True,
         "socket_timeout": 30,
+        "nocheckcertificate": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web", "mweb"]
+            }
+        }
     }
 
-    if section:
-        # Download specific section if video is exceptionally long (e.g. "*00:00-20:00")
-        ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(None, [(0, 1200)])
-        ydl_opts["force_keyframes_at_cuts"] = True
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([video_url])
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+    except Exception as primary_err:
+        # Cloud environment fallback with alternative player client
+        fallback_opts = dict(ydl_opts)
+        fallback_opts["format"] = "bestaudio/best"
+        fallback_opts["extractor_args"] = {"youtube": {"player_client": ["mweb", "android"]}}
+        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+            ydl.download([video_url])
 
     files = os.listdir(output_dir)
     if not files:
